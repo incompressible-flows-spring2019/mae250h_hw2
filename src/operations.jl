@@ -29,6 +29,29 @@ function dot(p1::CellData{NX,NY},p2::CellData{NX,NY}) where {NX,NY}
 end
 
 """
+    dot(p1::NodeData,p2::NodeData) -> Real
+
+Computes the inner product between two sets of node data on the same grid.
+"""
+function dot(p1::NodeData{NX,NY},p2::NodeData{NX,NY}) where {NX,NY}
+
+  # interior
+  tmp = dot(p1.data[2:NX,2:NY],p2.data[2:NX,2:NY])
+
+  # boundaries
+  tmp += 0.5*dot(p1.data[1,2:NY],   p2.data[1,2:NY])
+  tmp += 0.5*dot(p1.data[NX+1,2:NY],p2.data[NX+1,2:NY])
+  tmp += 0.5*dot(p1.data[2:NX,1],   p2.data[2:NX,1])
+  tmp += 0.5*dot(p1.data[2:NX,NY+1],p2.data[2:NX,NY+1])
+
+  # corners
+  tmp += 0.25*(p1.data[1,1]*p2.data[1,1]       + p1.data[NX+1,1]*p2.data[NX+1,1] +
+               p1.data[1,NY+1]*p2.data[1,NY+1] + p1.data[NX+1,NY+1]*p2.data[NX+1,NY+1])
+
+  return tmp/(NX*NY)
+end
+
+"""
     dot(p1::EdgeData,p2::EdgeData) -> Real
 
 Computes the inner product between two sets of edge data on the same grid.
@@ -47,9 +70,6 @@ function dot(p1::EdgeData{NX,NY},p2::EdgeData{NX,NY}) where {NX,NY}
 
   return tmp/(NX*NY)
 end
-
-# DEVELOP A NORM FOR NODE DATA
-
 
 """
     norm(p::GridData) -> Real
@@ -120,4 +140,130 @@ end
 # We can also call this curl, if we feel like it...
 curl(q::EdgeData) = rot(q)
 
-# DEVELOP GRAD AND CURL and LAPLACIANS FOR ALL TYPES
+"""
+    gradient(p::CellData) -> EdgeData
+
+Compute the discrete gradient of cell-centered data `p`, returning edge
+data on the same grid.
+"""
+function gradient(p::CellData{NX,NY}) where {NX,NY}
+    q = EdgeData(p)
+    # Loop over all edges, including ghosts
+    for j in 1:NY+2, i in 1:NX+1
+      q.qx[i,j] = p.data[i+1,j] - p.data[i,j]
+    end
+    for j in 1:NY+1, i in 1:NX+2
+      q.qy[i,j] = p.data[i,j+1] - p.data[i,j]
+    end
+    return q
+end
+
+"""
+    curl(s::NodeData) -> EdgeData
+
+Compute the discrete curl of node data `s`, returning edge
+data on the same grid.
+"""
+function curl(s::NodeData{NX,NY}) where {NX,NY}
+    q = EdgeData(s)
+    # Loop over all interior and boundary edges
+    for j in 2:NY+1, i in 1:NX+1
+      q.qx[i,j] = s.data[i,j] - s.data[i,j-1]
+    end
+    for j in 1:NY+1, i in 2:NX+1
+      q.qy[i,j] = -s.data[i,j] + s.data[i-1,j]
+    end
+    return q
+end
+
+"""
+    laplacian(p::CellData) -> CellData
+
+Compute the discrete Laplacian of the cell-centered data `p`, using
+ghost cells where needed.
+"""
+function laplacian(p::CellData{NX,NY}) where {NX,NY}
+  lap = CellData(p)
+  for j in 2:NY+1, i in 2:NX+1
+    lap.data[i,j] = -4*p.data[i,j] +
+                    p.data[i-1,j] + p.data[i+1,j] + p.data[i,j-1] + p.data[i,j+1]
+  end
+  return lap
+end
+
+"""
+    laplacian(s::NodeData) -> NodeData
+
+Compute the discrete Laplacian of the node data `s` at its interior nodes.
+"""
+function laplacian(s::NodeData{NX,NY}) where {NX,NY}
+  lap = NodeData(s)
+  for j in 2:NY, i in 2:NX
+    lap.data[i,j] = -4*s.data[i,j] +
+                    s.data[i-1,j] + s.data[i+1,j] + s.data[i,j-1] + s.data[i,j+1]
+  end
+  return lap
+end
+
+"""
+    laplacian(q::EdgeData) -> EdgeData
+
+Compute the discrete Laplacian of both components of the edge data
+`q` at its interior edges.
+"""
+function laplacian(q::EdgeData{NX,NY}) where {NX,NY}
+  lap = EdgeData(q)
+  for j in 2:NY+1, i in 2:NX
+    lap.qx[i,j] = -4*q.qx[i,j] +
+                    q.qx[i-1,j] + q.qx[i+1,j] + q.qx[i,j-1] + q.qx[i,j+1]
+  end
+  for j in 2:NY, i in 2:NX+1
+    lap.qy[i,j] = -4*q.qy[i,j] +
+                    q.qy[i-1,j] + q.qy[i+1,j] + q.qy[i,j-1] + q.qy[i,j+1]
+  end
+  return lap
+end
+
+#=============== TRANSLATING OPERATIONS ==================#
+#=
+Note that we call this translate!, because the first argument
+is changed by the function.
+=#
+"""
+    translate!(q::EdgeData,s::NodaData)
+
+Translate (by simply averaging) node data `s` into edge data `q`
+on the same grid.
+"""
+function translate!(q::EdgeData{NX,NY},s::NodeData{NX,NY}) where {NX,NY}
+    # Loop over all interior and boundary edges
+    for j in 2:NY+1, i in 1:NX+1
+      q.qx[i,j] = 0.5*(s.data[i,j] + s.data[i,j-1])
+    end
+    for j in 1:NY+1, i in 2:NX+1
+      q.qy[i,j] = 0.5*(s.data[i,j] + s.data[i-1,j])
+    end
+    return q
+end
+
+"""
+    translate!(q2::EdgeData,q1::EdgeData)
+
+Translate (by four-way averaging) edge data `q1` into edge data `q2`
+on the same grid. This effectively translates the x component to
+the y-component edge and vice versa. Note that ghosts are used in this
+process.
+"""
+function translate!(q2::EdgeData{NX,NY},q1::EdgeData{NX,NY}) where {NX,NY}
+  # Loop over all interior and boundary edges
+  for j in 2:NY+1, i in 1:NX+1
+    q2.qx[i,j] = 0.25*(q1.qy[i,j-1] + q1.qy[i+1,j-1] +
+                       q1.qy[i,j]   + q1.qy[i+1,j])
+  end
+  for j in 1:NY+1, i in 2:NX+1
+    q2.qy[i,j] = 0.25*(q1.qx[i-1,j] + q1.qx[i-1,j+1] +
+                       q1.qx[i,j]   + q1.qx[i,j+1])
+  end
+  return q2
+
+end
