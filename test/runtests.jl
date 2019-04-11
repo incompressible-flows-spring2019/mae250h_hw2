@@ -24,7 +24,7 @@ p = HW2.CellData(nx,ny)
 i, j = rand(2:nx+1), rand(2:ny+1)
 p.data[i,j] = 1.0
 
-@test LinearAlgebra.norm(p) == 1.0
+@test LinearAlgebra.norm(p)*sqrt(nx*ny) == 1.0
 
 # Test that subtraction of cell data works
 p2 = deepcopy(p)
@@ -179,6 +179,6 @@ q2 = HW2.EdgeData(q1)
 HW2.translate!(q2,q1)
 
 # The new data should be ones on all non-ghost y edges
-@test dot(q2,q2) == nx*ny
+@test dot(q2,q2) == 1.0
 
 end
